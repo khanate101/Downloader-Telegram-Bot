@@ -342,7 +342,8 @@ async def results_youtube(m, items):
         cap = (
             f"▶️ YouTube\n"
             f"🎬 {x.title}\n"
-            f"{x.meta}"
+            f"{x.meta}\n"
+            f"🔗 الرابط: {x.url}"
         )
 
         if x.thumb:
