@@ -85,7 +85,7 @@ async def text(m, state: FSMContext):
         await send_url(m, q)
         return
 
-    # Username search only. Hashtag search has intentionally been removed.
+    # Username search only.
     if q.startswith("@") and len(q) > 1:
         await m.answer("🔎 اختر المنصة:", reply_markup=platforms("user", q[1:]))
         return
