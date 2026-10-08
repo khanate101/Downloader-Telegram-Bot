@@ -1,3 +1,4 @@
+from urllib.parse import quote
 from aiogram.types import InlineKeyboardMarkup,InlineKeyboardButton
 
 def platforms(kind,q):
@@ -7,8 +8,12 @@ def platforms(kind,q):
         *([[InlineKeyboardButton(text="▶️ YouTube",callback_data=f"{kind}:youtube:{q}")]] if kind=="tag" else [])
     ])
 
-def media(token):
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎵 تحويل إلى صوت",callback_data=f"audio:{token}")]])
+def media(token,url):
+    share=f"https://t.me/share/url?url={quote(url,safe='')}"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎵 تحويل إلى صوت",callback_data=f"audio:{token}"),
+         InlineKeyboardButton(text="🔗 مشاركة",url=share)]
+    ])
 
 def result(token):
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📥 تحميل",callback_data=f"result:{token}")]])
