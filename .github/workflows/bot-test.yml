@@ -2,6 +2,8 @@ name: Telegram Bot Test
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
   run-bot:
