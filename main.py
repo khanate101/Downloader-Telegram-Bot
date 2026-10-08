@@ -53,8 +53,8 @@ async def send_url(m,url):
         token=secrets.token_urlsafe(8); CACHE[token]={"url":url,"platform":"direct"}
         path,info=await downloader.download(url,S.download_dir)
         ext=Path(path).suffix.lower(); cap="✅ تم التحميل"
-        if ext in {".jpg",".jpeg",".png",".webp"}: await bot.send_photo(m.chat.id,FSInputFile(path),caption=cap,reply_markup=media((token:=secrets.token_urlsafe(8)),url))
-        else: await bot.send_video(m.chat.id,FSInputFile(path),caption=cap,reply_markup=media(secrets.token_urlsafe(8)))
+        if ext in {".jpg",".jpeg",".png",".webp"}: await bot.send_photo(m.chat.id,FSInputFile(path),caption=cap,reply_markup=media(token,url))
+        else: await bot.send_video(m.chat.id,FSInputFile(path),caption=cap,reply_markup=media(token,url))
         u=await db.get(m.from_user.id); await db.inc(m.from_user.id,"downloads"); await db.event(u.id,"download",info.get("extractor_key","unknown"),url)
         Path(path).unlink(missing_ok=True); await wait.delete()
     except Exception: await wait.edit_text("❌ تعذر التحميل. تأكد أن الرابط عام ومدعوم.")
