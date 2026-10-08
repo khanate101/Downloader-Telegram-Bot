@@ -96,8 +96,9 @@ async def text(m, state: FSMContext):
     )
 
 
-async def send_url(m, url):
+async def send_url(m, url, user_id=None):
     wait = await m.answer("⏳ جارٍ التحميل...")
+    user_id = user_id or (m.from_user.id if m.from_user else None)
     token = secrets.token_urlsafe(8)
     CACHE[token] = {"url": url, "platform": "direct"}
     path = None
@@ -122,9 +123,9 @@ async def send_url(m, url):
                 reply_markup=media(token, url),
             )
 
-        u = await db.get(m.from_user.id)
+        u = await db.get(user_id) if user_id else None
         if u:
-            await db.inc(m.from_user.id, "downloads")
+            await db.inc(user_id, "downloads")
             await db.event(
                 u.id,
                 "download",
@@ -222,12 +223,19 @@ async def story(c):
 
     # Public story access varies by platform. Direct story URLs are always
     # accepted by the normal URL downloader when yt-dlp supports that URL.
-    if platform_name == "instagram":
-        items = await asyncio.wait_for(instagram.stories(username), timeout=30)
-    elif platform_name == "tiktok":
-        items = await asyncio.wait_for(tiktok.stories(username), timeout=30)
-    else:
-        items = []
+    try:
+        if platform_name == "instagram":
+            items = await asyncio.wait_for(instagram.stories(username), timeout=30)
+        elif platform_name == "tiktok":
+            items = await asyncio.wait_for(tiktok.stories(username), timeout=30)
+        else:
+            items = []
+    except asyncio.TimeoutError:
+        return await c.message.answer("❌ انتهت مهلة جلب القصص. حاول مرة أخرى.")
+    except Exception:
+        return await c.message.answer(
+            "❌ تعذر جلب القصص العامة حاليًا. إذا كان لديك رابط Story مباشر، أرسله للبوت."
+        )
 
     if not items:
         return await c.message.answer(
@@ -258,7 +266,7 @@ async def result_cb(c):
     x = CACHE.get(c.data.split(":", 1)[1])
     if not x:
         return await c.message.answer("انتهت صلاحية النتيجة.")
-    await send_url(c.message, x["url"])
+    await send_url(c.message, x["url"], user_id=c.from_user.id)
 
 
 @dp.callback_query(F.data.startswith("audio:"))
