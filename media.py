@@ -87,7 +87,7 @@ async def _download_tiktok_direct(url: str, folder_path: Path):
                 if len(r.content) < 10000: continue
                 target = folder_path / ("tiktok_" + hashlib.sha1(video_url.encode()).hexdigest()[:16] + ".mp4")
                 target.write_bytes(r.content)
-                return str(target), {"extractor_key": "TikTok"}
+                return str(_compress_video(target)), {"extractor_key": "TikTok"}
     except Exception:
         return None
     return None
