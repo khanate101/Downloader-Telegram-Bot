@@ -1,0 +1,7 @@
+aiogram>=3.22,<4
+aiosqlite>=0.20
+SQLAlchemy>=2.0
+python-dotenv>=1.0
+yt-dlp>=2025.10
+instaloader>=4.15
+httpx>=0.28
