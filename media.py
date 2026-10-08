@@ -99,28 +99,49 @@ async def download(url, folder="downloads"):
     direct_tiktok = await _download_tiktok_direct(resolved, folder_path)
     if direct_tiktok:
         return direct_tiktok
-    opts = {
-        "quiet": True, "no_warnings": True, "noplaylist": True,
-        "outtmpl": str(folder_path / "%(id)s.%(ext)s"),
-        "format": "best[ext=mp4][height<=720]/best[height<=720]/best",
-        "merge_output_format": "mp4", "restrictfilenames": True,
-    }
+    host = (urlparse(resolved).hostname or "").lower()
+    is_youtube = host.endswith("youtube.com") or host.endswith("youtu.be") or host.endswith("youtube-nocookie.com")
+
     def run():
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(resolved, download=True)
-            media_id = info.get("id") or "media"
-            candidates = []
-            for item in info.get("requested_downloads") or []:
-                if item.get("filepath"):
-                    candidates.append(Path(item["filepath"]))
-            prepared = Path(ydl.prepare_filename(info))
-            candidates.extend([prepared, prepared.with_suffix(".mp4"), folder_path / f"{media_id}.mp4"])
-            candidates.extend(folder_path.glob(f"{media_id}.*"))
-            for candidate in candidates:
-                if candidate.is_file() and candidate.stat().st_size > 0:
-                    final = _compress_video(candidate) if candidate.suffix.lower() in {".mp4", ".mov", ".mkv", ".webm"} else candidate
-                    return str(final), info
-            raise FileNotFoundError(f"Final media file not found for {media_id}")
+        attempts = []
+        if is_youtube:
+            attempts.extend([
+                {"format": "best[ext=mp4][height<=480]/best[height<=480]",
+                 "extractor_args": {"youtube": {"player_client": ["web"]}}},
+                {"format": "best[ext=mp4][height<=480]/best[height<=480]"},
+                {"format": "best[ext=mp4][height<=360]/best[height<=360]"},
+            ])
+        else:
+            attempts.append({"format": "best[ext=mp4][height<=720]/best[height<=720]/best"})
+
+        last_error = None
+        for attempt in attempts:
+            opts = {
+                "quiet": True, "no_warnings": True, "noplaylist": True,
+                "outtmpl": str(folder_path / "%(id)s.%(ext)s"),
+                "merge_output_format": "mp4", "restrictfilenames": True,
+                "retries": 2, "fragment_retries": 2, **attempt,
+            }
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(resolved, download=True)
+                    media_id = info.get("id") or "media"
+                    candidates = []
+                    for item in info.get("requested_downloads") or []:
+                        if item.get("filepath"):
+                            candidates.append(Path(item["filepath"]))
+                    prepared = Path(ydl.prepare_filename(info))
+                    candidates.extend([prepared, prepared.with_suffix(".mp4"), folder_path / f"{media_id}.mp4"])
+                    candidates.extend(folder_path.glob(f"{media_id}.*"))
+                    for candidate in candidates:
+                        if candidate.is_file() and candidate.stat().st_size > 0:
+                            if candidate.suffix.lower() in {".mp4", ".mov", ".mkv", ".webm"}:
+                                candidate = _compress_video(candidate)
+                            return str(candidate), info
+            except Exception as exc:
+                last_error = exc
+        raise RuntimeError(f"yt-dlp download failed: {last_error}")
+
     return await asyncio.to_thread(run)
 
 async def youtube_search(q, limit=10):
