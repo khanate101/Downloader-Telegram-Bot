@@ -90,10 +90,8 @@ async def text(m, state: FSMContext):
         await m.answer("🔎 اختر المنصة:", reply_markup=platforms("user", q[1:]))
         return
 
-    await m.answer(
-        "أرسل رابطًا للتحميل، أو @username للبحث عن حساب Instagram/TikTok، "
-        "أو استخدم «بحث يوتيوب» للبحث في YouTube."
-    )
+    # Any ordinary text is a YouTube search query; /youtube is optional.
+    await send_youtube(m, q)
 
 
 async def send_url(m, url, user_id=None):
