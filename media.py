@@ -1,4 +1,7 @@
 import asyncio
+import hashlib
+import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,10 +48,57 @@ def _compress_video(path: Path) -> Path:
         tmp.unlink(missing_ok=True)
     raise ValueError("Downloaded video is too large for Telegram")
 
+def _find_video_url(obj):
+    if isinstance(obj, dict):
+        for key in ("playAddr", "downloadAddr", "playApi", "download_url", "play_url"):
+            value = obj.get(key)
+            if isinstance(value, str) and "http" in value:
+                return value.replace("\\u002F", "/").replace("\\u0026", "&").replace("\\/", "/")
+        for value in obj.values():
+            found = _find_video_url(value)
+            if found: return found
+    elif isinstance(obj, list):
+        for value in obj:
+            found = _find_video_url(value)
+            if found: return found
+    return None
+
+async def _download_tiktok_direct(url: str, folder_path: Path):
+    host = (urlparse(url).hostname or "").lower()
+    if not (host.endswith("tiktok.com") or host.endswith("tiktokv.com")):
+        return None
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=25, headers={
+            "User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36",
+            "Referer": "https://www.tiktok.com/",
+            "Accept-Language": "en-US,en;q=0.9",
+        }) as client:
+            page = await client.get(url)
+            page.raise_for_status()
+            for script_id in ("__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE"):
+                match = re.search(r'<script[^>]+id=["\\\']' + re.escape(script_id) + r'["\\\'][^>]*>(.*?)</script>', page.text, re.S)
+                if not match: continue
+                try: data = json.loads(match.group(1))
+                except Exception: continue
+                video_url = _find_video_url(data)
+                if not video_url: continue
+                r = await client.get(video_url, follow_redirects=True)
+                r.raise_for_status()
+                if len(r.content) < 10000: continue
+                target = folder_path / ("tiktok_" + hashlib.sha1(video_url.encode()).hexdigest()[:16] + ".mp4")
+                target.write_bytes(r.content)
+                return str(target), {"extractor_key": "TikTok"}
+    except Exception:
+        return None
+    return None
+
 async def download(url, folder="downloads"):
     folder_path = Path(folder)
     folder_path.mkdir(parents=True, exist_ok=True)
     resolved = await _resolve_special_url(url)
+    direct_tiktok = await _download_tiktok_direct(resolved, folder_path)
+    if direct_tiktok:
+        return direct_tiktok
     opts = {
         "quiet": True, "no_warnings": True, "noplaylist": True,
         "outtmpl": str(folder_path / "%(id)s.%(ext)s"),
