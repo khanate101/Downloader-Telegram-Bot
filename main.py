@@ -37,7 +37,7 @@ async def start(m):
             "👋 أهلاً بك.\n"
             "🔗 أرسل رابطًا للتحميل.\n"
             "👤 أرسل @username للبحث عن حساب Instagram أو TikTok.\n"
-            "▶️ أرسل «بحث يوتيوب» أو استخدم /youtube للبحث في YouTube."
+            "🔎 أرسل أي نص للبحث في YouTube، أو استخدم /youtube.\n"
         )
 
 
@@ -133,11 +133,20 @@ async def send_url(m, url, user_id=None):
 
         await wait.delete()
 
-    except Exception:
-        await wait.edit_text(
-            "❌ تعذر التحميل. تأكد أن الرابط عام ومدعوم، "
-            "وأن الملف ليس أكبر من الحد المسموح به في Telegram."
-        )
+    except Exception as exc:
+        error_text = str(exc).lower()
+        if "youtube blocked this server ip" in error_text or "sign in to confirm" in error_text or "not a bot" in error_text:
+            message = (
+                "❌ رفض YouTube طلب التنزيل من الخادم. هذه مشكلة حماية/تقييد من YouTube، "
+                "وليست من رابط البحث. يلزم ملف Cookies صالح أو تجربة الخادم لاحقًا."
+            )
+        elif "too large" in error_text or "file is too big" in error_text or "request entity too large" in error_text:
+            message = "❌ الملف أكبر من الحد الذي يقبله Telegram حتى بعد الضغط. جرّب فيديو أقصر."
+        elif "ffmpeg" in error_text:
+            message = "❌ تعذرت معالجة الفيديو. تأكد أن FFmpeg مثبت ويعمل على الخادم."
+        else:
+            message = "❌ تعذر التحميل. قد يكون الرابط غير مدعوم أو خاصًا أو أن المنصة تمنع الوصول مؤقتًا."
+        await wait.edit_text(message)
     finally:
         if path:
             Path(path).unlink(missing_ok=True)
