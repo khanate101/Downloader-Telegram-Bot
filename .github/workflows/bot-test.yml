@@ -5,11 +5,15 @@ on:
   push:
     branches: [main]
 
+# Prevent two polling instances of the same Telegram bot from running at once.
+concurrency:
+  group: telegram-bot-polling-test
+  cancel-in-progress: true
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     timeout-minutes: 12
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,12 +31,29 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Telegram bot for 10 minutes
+      - name: Validate Python syntax
+        run: python -m py_compile *.py
+
+      - name: Run bot and verify it stays alive
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
-        run: timeout --signal=SIGTERM 10m python main.py
-
-      - name: Test finished
-        if: always()
-        run: echo "Telegram bot test finished."
+          YOUTUBE_COOKIES_FILE: ${{ runner.temp }}/youtube-cookies.txt
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          if [ -n "$YOUTUBE_COOKIES" ]; then
+            printf '%s' "$YOUTUBE_COOKIES" > "$YOUTUBE_COOKIES_FILE"
+            chmod 600 "$YOUTUBE_COOKIES_FILE"
+          else
+            unset YOUTUBE_COOKIES_FILE
+          fi
+          set +e
+          timeout --signal=SIGINT --kill-after=15s 10m python -u main.py
+          status=$?
+          set -e
+          if [ "$status" -eq 124 ] || [ "$status" -eq 130 ]; then
+            echo "Bot stayed running for the full smoke-test window."
+            exit 0
+          fi
+          echo "Bot exited early with status $status."
+          exit "$status"
