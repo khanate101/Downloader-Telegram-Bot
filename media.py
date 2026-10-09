@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -105,12 +106,28 @@ async def download(url, folder="downloads"):
     def run():
         attempts = []
         if is_youtube:
-            attempts.extend([
-                {"format": "best[ext=mp4][height<=480]/best[height<=480]",
-                 "extractor_args": {"youtube": {"player_client": ["web"]}}},
-                {"format": "best[ext=mp4][height<=480]/best[height<=480]"},
-                {"format": "best[ext=mp4][height<=360]/best[height<=360]"},
-            ])
+            # GitHub-hosted runners are often rate-limited by YouTube. Try
+            # several supported clients, and optionally use a user-supplied
+            # cookies file (never commit cookies into the repository).
+            cookie_file = os.getenv("YOUTUBE_COOKIES_FILE", "").strip()
+            base_formats = [
+                "best[ext=mp4][height<=480]/best[height<=480]",
+                "best[ext=mp4][height<=360]/best[height<=360]",
+            ]
+            for client in ("android_vr", "ios", "mweb", "web"):
+                for fmt in base_formats:
+                    attempt = {
+                        "format": fmt,
+                        "extractor_args": {"youtube": {"player_client": [client]}},
+                    }
+                    if cookie_file and Path(cookie_file).is_file():
+                        attempt["cookiefile"] = cookie_file
+                    attempts.append(attempt)
+            # Last fallback lets yt-dlp choose its default client strategy.
+            fallback = {"format": "best[ext=mp4][height<=360]/best[height<=360]"}
+            if cookie_file and Path(cookie_file).is_file():
+                fallback["cookiefile"] = cookie_file
+            attempts.append(fallback)
         else:
             attempts.append({"format": "best[ext=mp4][height<=720]/best[height<=720]/best"})
 
@@ -140,7 +157,14 @@ async def download(url, folder="downloads"):
                             return str(candidate), info
             except Exception as exc:
                 last_error = exc
-        raise RuntimeError(f"yt-dlp download failed: {last_error}")
+        error_text = str(last_error or "unknown error")
+        if is_youtube and ("Sign in to confirm" in error_text or "not a bot" in error_text.lower()):
+            raise RuntimeError(
+                "YouTube blocked this server IP and requested authentication. "
+                "Set YOUTUBE_COOKIES_FILE to a valid exported YouTube cookies file, "
+                "or retry later from a different trusted host."
+            ) from last_error
+        raise RuntimeError(f"yt-dlp download failed: {error_text}")
 
     return await asyncio.to_thread(run)
 
